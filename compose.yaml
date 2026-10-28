@@ -1,0 +1,6 @@
+services:
+  document-checker:
+    build: .
+    ports:
+      - "${STREAMLIT_PORT:-8501}:8501"
+    restart: unless-stopped
