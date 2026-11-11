@@ -21,18 +21,19 @@ STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
 
 QUALITY_CUTOFFS = {"POOR": 40, "GOOD": 70}
 QUALITY_FACTORS = {
-    "sharpness": (0.45, "Fine detail and edge clarity"),
-    "contrast": (0.25, "Separation between text and background"),
-    "brightness": (0.15, "Distance from the preferred page brightness"),
-    "resolution": (0.15, "Available pixel height"),
+    "sharpness": (0.45, "Is the writing crisp, not blurry?"),
+    "contrast": (0.25, "Does the writing stand out clearly from the paper?"),
+    "brightness": (0.15, "Is the picture neither too dark nor too bright?"),
+    "resolution": (0.15, "Is the picture big enough to show small details?"),
 }
 TRAIN_TYPES = ["field_edit", "copy_move", "splice"]
 TEST_TYPES = TRAIN_TYPES + ["erase"]
 FORGERY_INFO = {
-    "field_edit": "Replace a text field with a different value.",
-    "copy_move": "Copy a text patch to another location on the page.",
-    "splice": "Paste a text patch from a different page.",
-    "erase": "Remove text with inpainting (not used during training).",
+    "field_edit": "Some writing in a field is removed and different writing is put in its place.",
+    "copy_move": "A piece of writing is copied and pasted somewhere else on the same page.",
+    "splice": "A piece of writing is taken from a different page and pasted onto this one.",
+    "erase": "Some writing is wiped out and the gap is filled to look like blank paper. "
+             "The checker never practised on this kind of change.",
 }
 
 

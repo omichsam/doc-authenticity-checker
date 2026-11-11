@@ -14,7 +14,7 @@ RUN useradd --create-home --uid 10001 appuser
 COPY requirements.txt ./
 RUN python -m pip install --no-cache-dir -r requirements.txt
 
-COPY --chown=appuser:appuser app.py tamper_core.py tamper_cnn.pt ./
+COPY --chown=appuser:appuser app.py api.py tamper_core.py tamper_cnn.pt genuine_scores.json ./
 COPY --chown=appuser:appuser .streamlit/config.toml .streamlit/config.toml
 
 USER appuser

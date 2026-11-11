@@ -94,6 +94,9 @@ non-root user and has a Streamlit health check.
 
 ## Using the application
 
+For a step-by-step guide to each tab, with worked examples of good, normal
+and poor results, see [USER_GUIDE.md](USER_GUIDE.md).
+
 1. In **Check a document**, upload one of the supported image formats.
 2. Review the image-quality score and, if the model loads, the tampering score.
 3. Inspect the heat map and highlighted regions. Adjust the sidebar's flag
@@ -106,6 +109,23 @@ non-root user and has a Streamlit health check.
 
 The threshold slider changes the page-level verdict. The region overlays use
 a fixed probability cutoff and should be interpreted as visual guides.
+
+## Calling the model from another system (API)
+
+`api.py` serves the same checks over HTTP, so another system can send a page
+image or a PDF and get JSON back. The JSON has an `action` (`continue`,
+`manual_review` or `request_rescan`), a `level`, plain-language `reasons`, a
+comparison with real pages, and picture advice. Checks can run in the
+background. Run it with:
+
+```powershell
+$env:DOC_CHECKER_API_KEY = "choose-a-long-random-key"
+.\.venv\Scripts\python.exe -m uvicorn api:app --host 127.0.0.1 --port 8100
+```
+
+See [API.md](API.md) for the endpoints, the response fields, Docker
+deployment, and a step-by-step Django integration (client module in
+[integrations/django/doc_checker.py](integrations/django/doc_checker.py)).
 
 ## Model and training
 
@@ -145,6 +165,11 @@ privacy and access controls.
 | Path | Purpose |
 | --- | --- |
 | `app.py` | Streamlit user interface and app flow |
+| `api.py` | HTTP API for other systems (see `API.md`) |
+| `integrations/django/doc_checker.py` | Client module to copy into a Django project |
+| `genuine_scores.json` | Scores of real held-out pages; the API compares each result with them |
+| `calibrate.py` | Rebuilds `genuine_scores.json`; re-run after retraining (needs `data/`) |
+| `postman/` | Postman collection, environment and sample files for testing the API |
 | `tamper_core.py` | Model architecture, checkpoint loading, image processing, and inference |
 | `tamper_cnn.pt` | Trained model checkpoint used by the app |
 | `PWD_Tamper_CNN_Simple.ipynb` | Data preparation, training, and evaluation notebook |
@@ -152,6 +177,8 @@ privacy and access controls.
 | `Dockerfile` | Container image definition |
 | `compose.yaml` | Docker Compose service and port configuration |
 | `DOCKER.md` | Additional Docker run instructions |
+| `API.md` | API reference and Django integration guide |
+| `USER_GUIDE.md` | How to use each tab and read the results |
 | `.streamlit/config.toml` | Streamlit theme and upload-size configuration |
 | `training_log.txt` | Saved training log |
 

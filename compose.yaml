@@ -1,6 +1,28 @@
 services:
   document-checker:
     build: .
+    image: pwd-document-checker
     ports:
       - "${STREAMLIT_PORT:-8501}:8501"
+    restart: unless-stopped
+
+  # HTTP API for other systems (e.g. a Django project). See API.md.
+  # Start with: docker compose --profile api up -d --build
+  document-checker-api:
+    image: pwd-document-checker
+    profiles: ["api"]
+    depends_on:
+      - document-checker
+    command: ["python", "-m", "uvicorn", "api:app", "--host", "0.0.0.0", "--port", "8100"]
+    environment:
+      DOC_CHECKER_API_KEY: "${DOC_CHECKER_API_KEY:-}"
+      DOC_CHECKER_REQUIRE_KEY: "1"
+    ports:
+      - "127.0.0.1:${API_PORT:-8100}:8100"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8100/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 60s
+      retries: 3
     restart: unless-stopped

@@ -1,0 +1,684 @@
+{
+  "info": {
+    "name": "PWD Document Checker API",
+    "description": "Requests and automatic checks for the document-checker API (api.py, version 1.1). See API.md.\n\nBefore running:\n1. Start the API (see API.md) and note its key.\n2. Select the \"PWD Document Checker - local\" environment and put the key in `apiKey`.\n3. Uploads use files in `postman/files/`. In the Postman app, set Settings → General → Working directory to the project folder (`simple_cnn`), or pick the file again in each request's Body tab.\n\nEach new page takes 5–25 seconds on a CPU. Run the whole collection in order: later requests reuse results of earlier ones.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "apikey",
+    "apikey": [
+      {"key": "key", "value": "X-API-Key", "type": "string"},
+      {"key": "value", "value": "{{apiKey}}", "type": "string"},
+      {"key": "in", "value": "header", "type": "string"}
+    ]
+  },
+  "event": [
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "pm.test(\"Response is JSON\", function () {",
+          "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\");",
+          "});"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {"key": "baseUrl", "value": "http://127.0.0.1:8100"}
+  ],
+  "item": [
+    {
+      "name": "API overview",
+      "request": {
+        "auth": {"type": "noauth"},
+        "method": "GET",
+        "url": "{{baseUrl}}/",
+        "description": "What you see when you open the API's address in a browser: the version and the list of endpoints. Needs no key."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status 200\", () => pm.response.to.have.status(200));",
+              "const r = pm.response.json();",
+              "pm.test(\"Lists the endpoints\", () => {",
+              "    const paths = r.endpoints.map(e => `${e.method} ${e.path}`);",
+              "    pm.expect(paths).to.include.members([\"GET /health\", \"GET /v1/model\", \"POST /v1/checks\", \"GET /v1/checks/{check_id}\", \"POST /v1/check\"]);",
+              "});",
+              "pm.test(\"API version is 1.1\", () => pm.expect(r.api_version).to.eql(\"1.1\"));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Health",
+      "request": {
+        "auth": {"type": "noauth"},
+        "method": "GET",
+        "url": "{{baseUrl}}/health",
+        "description": "Is the API up? Needs no key."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status 200\", () => pm.response.to.have.status(200));",
+              "pm.test(\"API reports ok\", () => pm.expect(pm.response.json().status).to.eql(\"ok\"));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Model info",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/v1/model",
+        "description": "API version, model file and fingerprint, device, warning level, and how many real pages results are compared with."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status 200\", () => pm.response.to.have.status(200));",
+              "const m = pm.response.json();",
+              "pm.test(\"API version is 1.1\", () => pm.expect(m.api_version).to.eql(\"1.1\"));",
+              "pm.test(\"Model file and SHA-256 are reported\", () => {",
+              "    pm.expect(m.file).to.be.a(\"string\").and.not.empty;",
+              "    pm.expect(m.sha256).to.match(/^[0-9a-f]{64}$/);",
+              "});",
+              "pm.test(\"Warning level is between 0 and 1\", () => pm.expect(m.warning_level).to.be.a(\"number\").within(0, 1));",
+              "pm.test(\"Results are compared with real pages\", () => pm.expect(m.real_pages_for_comparison).to.be.a(\"number\").above(0));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Check a document",
+      "description": "Checks that wait for the result (POST /v1/check). Each request uploads a file from postman/files/.",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// What every successful result must contain, and the rules it must follow",
+              "if (pm.response.code === 200) {",
+              "    const r = pm.response.json();",
+              "    const rank = {continue: 0, request_rescan: 1, manual_review: 2};",
+              "    pm.test(\"Result has the documented fields\", () => {",
+              "        pm.expect(r.check_id).to.match(/^chk_[0-9a-f]{20}$/);",
+              "        pm.expect(r.checked_at).to.match(/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$/);",
+              "        pm.expect(r.api_version).to.eql(\"1.1\");",
+              "        pm.expect(r.file.sha256).to.match(/^[0-9a-f]{64}$/);",
+              "        pm.expect(r.file.type).to.be.oneOf([\"image\", \"pdf\"]);",
+              "        pm.expect(r.action).to.be.oneOf([\"continue\", \"manual_review\", \"request_rescan\"]);",
+              "        pm.expect(r.level).to.be.oneOf([\"low\", \"medium\", \"high\"]);",
+              "        pm.expect(r.message).to.be.a(\"string\").and.not.empty;",
+              "        pm.expect(r.reasons).to.be.an(\"array\").that.is.not.empty;",
+              "        pm.expect(r.cached).to.be.a(\"boolean\");",
+              "        pm.expect(r.page_count).to.eql(r.pages.length).and.eql(r.file.pages);",
+              "        pm.expect(r.worst_page).to.be.within(1, r.page_count);",
+              "        pm.expect(r.note).to.include(\"Screening aid only\");",
+              "    });",
+              "    r.pages.forEach(p => {",
+              "        pm.test(`Page ${p.page} follows the rules`, () => {",
+              "            const c = p.change, q = p.quality;",
+              "            pm.expect(q.score).to.be.within(0, 100);",
+              "            pm.expect(q.advice === null).to.eql(q.category === \"GOOD\");",
+              "            pm.expect(c.score).to.be.within(0, 1);",
+              "            let expected = \"continue\";",
+              "            if (q.category === \"POOR\") expected = \"request_rescan\";",
+              "            else if (c.score >= c.warning_level) expected = \"manual_review\";",
+              "            pm.expect(p.action).to.eql(expected);",
+              "            pm.expect(p.level === \"high\").to.eql(c.score >= c.warning_level);",
+              "            pm.expect(c.compared_to_real_pages.higher_than_pct).to.be.within(0, 100);",
+              "            pm.expect(c.regions).to.be.an(\"array\").with.lengthOf.at.most(10);",
+              "            c.regions.forEach(b => {",
+              "                pm.expect(b.x + b.width).to.be.at.most(p.image.width + 1);",
+              "                pm.expect(b.y + b.height).to.be.at.most(p.image.height + 1);",
+              "                pm.expect(b.x_pct + b.width_pct).to.be.at.most(100.1);",
+              "                pm.expect(b.y_pct + b.height_pct).to.be.at.most(100.1);",
+              "            });",
+              "        });",
+              "    });",
+              "    pm.test(\"Document takes the result of its worst page\", () => {",
+              "        const worst = Math.max(...r.pages.map(p => rank[p.action]));",
+              "        pm.expect(rank[r.action]).to.eql(worst);",
+              "        pm.expect(r.pages[r.worst_page - 1].action).to.eql(r.action);",
+              "    });",
+              "}"
+            ]
+          }
+        }
+      ],
+      "item": [
+        {
+          "name": "Genuine clear page → continue",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/v1/check",
+            "body": {"mode": "formdata", "formdata": [{"key": "file", "type": "file", "src": "postman/files/genuine-page.jpg"}]},
+            "description": "A real, clear form. Expect `continue` with a low level."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json();",
+                  "pm.test(\"Action is continue\", () => pm.expect(r.action).to.eql(\"continue\"));",
+                  "pm.test(\"Level is low\", () => pm.expect(r.level).to.eql(\"low\"));",
+                  "pm.test(\"Picture quality is GOOD, with no advice\", () => {",
+                  "    pm.expect(r.quality.category).to.eql(\"GOOD\");",
+                  "    pm.expect(r.quality.advice).to.be.null;",
+                  "});",
+                  "pm.test(\"Reasons say it is normal for a genuine page\", () => pm.expect(r.reasons.join(\" \")).to.include(\"normal for a genuine page\"));",
+                  "pm.collectionVariables.set(\"genuineScore\", r.change.score);",
+                  "pm.collectionVariables.set(\"genuineCheckId\", r.check_id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Same page again → cached",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/v1/check",
+            "body": {"mode": "formdata", "formdata": [{"key": "file", "type": "file", "src": "postman/files/genuine-page.jpg"}]},
+            "description": "The same file again. The API remembers it, so the answer is instant and identical, with a new check_id."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json();",
+                  "pm.test(\"Result came from memory\", () => pm.expect(r.cached).to.be.true);",
+                  "pm.test(\"Same score as the first check\", () => pm.expect(r.change.score).to.eql(Number(pm.collectionVariables.get(\"genuineScore\"))));",
+                  "pm.test(\"New check_id for this request\", () => pm.expect(r.check_id).to.not.eql(pm.collectionVariables.get(\"genuineCheckId\")));",
+                  "pm.test(\"Answered in under a second\", () => pm.expect(pm.response.responseTime).to.be.below(1000));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Blurry page → request_rescan",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/v1/check",
+            "body": {"mode": "formdata", "formdata": [{"key": "file", "type": "file", "src": "postman/files/blurry-page.jpg"}]},
+            "description": "A blurry scan. Expect `request_rescan` with advice for the applicant."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json();",
+                  "pm.test(\"Picture quality is POOR\", () => pm.expect(r.quality.category).to.eql(\"POOR\"));",
+                  "pm.test(\"Action is request_rescan\", () => pm.expect(r.action).to.eql(\"request_rescan\"));",
+                  "pm.test(\"Advice says the picture is blurry\", () => pm.expect(r.quality.advice).to.include(\"blurry\"));",
+                  "pm.test(\"First reason says the check is not reliable\", () => pm.expect(r.reasons[0]).to.include(\"not reliable\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Edited page → manual_review",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/v1/check",
+            "body": {"mode": "formdata", "formdata": [{"key": "file", "type": "file", "src": "postman/files/edited-page.jpg"}]},
+            "description": "The genuine page with one date replaced (top left, under the logo). Expect `manual_review`, level high, box 1 on the date."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json();",
+                  "pm.test(\"Action is manual_review, level high\", () => {",
+                  "    pm.expect(r.action).to.eql(\"manual_review\");",
+                  "    pm.expect(r.level).to.eql(\"high\");",
+                  "});",
+                  "pm.test(\"Reasons point to box 1\", () => pm.expect(r.reasons.join(\" \")).to.include(\"box 1 is the most suspicious\"));",
+                  "pm.test(\"Box 1 is on the changed date (top left of the page)\", () => {",
+                  "    const top = r.change.regions[0];",
+                  "    pm.expect(top.peak).to.be.at.least(r.change.warning_level);",
+                  "    pm.expect(top.y_pct).to.be.below(25);",
+                  "    pm.expect(top.x_pct).to.be.below(50);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Edited page with heat map",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/v1/check?heatmap=true",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "check"],
+              "query": [{"key": "heatmap", "value": "true"}]
+            },
+            "body": {"mode": "formdata", "formdata": [{"key": "file", "type": "file", "src": "postman/files/edited-page.jpg"}]},
+            "description": "Same page, also asking for the colour map as a base64 PNG. Open the Visualize tab to see it."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json();",
+                  "pm.test(\"Heat map is a base64 PNG\", () => {",
+                  "    pm.expect(r.heatmap_png_base64).to.be.a(\"string\");",
+                  "    pm.expect(r.heatmap_png_base64.startsWith(\"iVBORw0KGgo\")).to.be.true;",
+                  "});",
+                  "pm.test(\"Heat map is not repeated inside the single page\", () => pm.expect(r.pages[0]).to.not.have.property(\"heatmap_png_base64\"));",
+                  "pm.visualizer.set(",
+                  "    '<p><b>{{action}}</b>: {{message}}</p><ul>{{#each reasons}}<li>{{this}}</li>{{/each}}</ul><img style=\"max-width:100%\" src=\"data:image/png;base64,{{img}}\">',",
+                  "    {action: r.action, message: r.message, reasons: r.reasons, img: r.heatmap_png_base64}",
+                  ");"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Two-page PDF → page 2 decides",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/v1/check",
+            "body": {"mode": "formdata", "formdata": [{"key": "file", "type": "file", "src": "postman/files/two-page-document.pdf"}]},
+            "description": "A PDF whose page 1 is genuine and page 2 is edited. Each page is checked; the document takes the worst page's result."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json();",
+                  "pm.test(\"Read as a 2-page PDF\", () => {",
+                  "    pm.expect(r.file.type).to.eql(\"pdf\");",
+                  "    pm.expect(r.page_count).to.eql(2);",
+                  "});",
+                  "pm.test(\"Page 1 passes, page 2 needs review\", () => {",
+                  "    pm.expect(r.pages[0].action).to.eql(\"continue\");",
+                  "    pm.expect(r.pages[1].action).to.eql(\"manual_review\");",
+                  "});",
+                  "pm.test(\"Document result comes from page 2\", () => {",
+                  "    pm.expect(r.worst_page).to.eql(2);",
+                  "    pm.expect(r.action).to.eql(\"manual_review\");",
+                  "    pm.expect(r.message).to.match(/^Page 2: /);",
+                  "    pm.expect(r.reasons[0]).to.include(\"Pages to review: 2\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Background checks",
+      "description": "Start a check that returns at once (POST /v1/checks), then fetch the result (GET /v1/checks/{id}). Run these two in order.",
+      "item": [
+        {
+          "name": "Start a background check",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/v1/checks",
+            "body": {"mode": "formdata", "formdata": [{"key": "file", "type": "file", "src": "postman/files/background-page.jpg"}]},
+            "description": "Returns 202 at once with a check_id and a status_url."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 202 Accepted\", () => pm.response.to.have.status(202));",
+                  "const j = pm.response.json();",
+                  "pm.test(\"Has a check_id and status_url\", () => {",
+                  "    pm.expect(j.check_id).to.match(/^chk_[0-9a-f]{20}$/);",
+                  "    pm.expect(j.status_url).to.eql(`/v1/checks/${j.check_id}`);",
+                  "    pm.expect(pm.response.headers.get(\"Location\")).to.eql(j.status_url);",
+                  "});",
+                  "pm.test(\"Status is queued, running or done\", () => pm.expect(j.status).to.be.oneOf([\"queued\", \"running\", \"done\"]));",
+                  "pm.test(\"Answered in under 3 seconds\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "pm.collectionVariables.set(\"checkId\", j.check_id);",
+                  "pm.collectionVariables.set(\"pollTries\", 0);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get the background check result",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/v1/checks/{{checkId}}",
+            "description": "Ask until the status is done. In a collection run this request repeats itself every 3 seconds (up to 2 minutes); when you click Send yourself, click it again until it says done."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Wait a little between tries",
+                  "if (Number(pm.collectionVariables.get(\"pollTries\") || 0) > 0) setTimeout(() => {}, 3000);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "const tries = Number(pm.collectionVariables.get(\"pollTries\") || 0) + 1;",
+                  "pm.collectionVariables.set(\"pollTries\", tries);",
+                  "if ((j.status === \"queued\" || j.status === \"running\") && tries < 40) {",
+                  "    pm.execution.setNextRequest(pm.info.requestName);   // ask again",
+                  "} else {",
+                  "    pm.test(\"Check finished\", () => pm.expect(j.status).to.eql(\"done\"));",
+                  "    pm.test(\"Result is complete\", () => {",
+                  "        pm.expect(j.result.check_id).to.eql(j.check_id);",
+                  "        pm.expect(j.result.action).to.be.oneOf([\"continue\", \"manual_review\", \"request_rescan\"]);",
+                  "        pm.expect(j.result.reasons).to.be.an(\"array\").that.is.not.empty;",
+                  "        pm.expect(j.finished_at).to.be.a(\"string\");",
+                  "    });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Unknown check id → 404",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/v1/checks/chk_00000000000000000000"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 404\", () => pm.response.to.have.status(404));",
+                  "pm.test(\"Code is check_not_found\", () => pm.expect(pm.response.json().error.code).to.eql(\"check_not_found\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Errors",
+      "description": "Wrong calls must get a clear error, never a crash.",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Error body has a code and a message\", () => {",
+              "    const e = pm.response.json().error;",
+              "    pm.expect(e.code).to.be.a(\"string\").and.not.empty;",
+              "    pm.expect(e.message).to.be.a(\"string\").and.not.empty;",
+              "});"
+            ]
+          }
+        }
+      ],
+      "item": [
+        {
+          "name": "Unknown address → 404",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/v1/chek",
+            "description": "A typo in the path gets a JSON error that points to GET /."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 404\", () => pm.response.to.have.status(404));",
+                  "pm.test(\"Code is not_found\", () => pm.expect(pm.response.json().error.code).to.eql(\"not_found\"));",
+                  "pm.test(\"Message points to GET /\", () => pm.expect(pm.response.json().error.message).to.include(\"GET / lists the endpoints\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Wrong method (GET /v1/check) → 405",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/v1/check",
+            "description": "Like opening /v1/check in a browser. The message says to use POST."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 405\", () => pm.response.to.have.status(405));",
+                  "pm.test(\"Code is method_not_allowed\", () => pm.expect(pm.response.json().error.code).to.eql(\"method_not_allowed\"));",
+                  "pm.test(\"Message says to use POST\", () => pm.expect(pm.response.json().error.message).to.include(\"use POST\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "No API key → 401",
+          "request": {
+            "auth": {"type": "noauth"},
+            "method": "POST",
+            "url": "{{baseUrl}}/v1/check",
+            "body": {"mode": "formdata", "formdata": [{"key": "file", "type": "file", "src": "postman/files/blurry-page.jpg"}]}
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 401\", () => pm.response.to.have.status(401));",
+                  "pm.test(\"Code is invalid_api_key\", () => pm.expect(pm.response.json().error.code).to.eql(\"invalid_api_key\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Wrong API key → 401",
+          "request": {
+            "auth": {
+              "type": "apikey",
+              "apikey": [
+                {"key": "key", "value": "X-API-Key", "type": "string"},
+                {"key": "value", "value": "this-is-not-the-key", "type": "string"},
+                {"key": "in", "value": "header", "type": "string"}
+              ]
+            },
+            "method": "GET",
+            "url": "{{baseUrl}}/v1/model"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 401\", () => pm.response.to.have.status(401));",
+                  "pm.test(\"Code is invalid_api_key\", () => pm.expect(pm.response.json().error.code).to.eql(\"invalid_api_key\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Damaged PDF → 415",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/v1/check",
+            "body": {"mode": "formdata", "formdata": [{"key": "file", "type": "file", "src": "postman/files/damaged.pdf"}]}
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 415\", () => pm.response.to.have.status(415));",
+                  "pm.test(\"Code is unsupported_file\", () => pm.expect(pm.response.json().error.code).to.eql(\"unsupported_file\"));",
+                  "pm.test(\"Message says the PDF could not be opened\", () => pm.expect(pm.response.json().error.message).to.include(\"PDF could not be opened\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Text file → 415",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/v1/check",
+            "body": {"mode": "formdata", "formdata": [{"key": "file", "type": "file", "src": "postman/files/not-an-image.txt"}]}
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 415\", () => pm.response.to.have.status(415));",
+                  "pm.test(\"Code is unsupported_file\", () => pm.expect(pm.response.json().error.code).to.eql(\"unsupported_file\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Bad file in a background check → 415 at once",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/v1/checks",
+            "body": {"mode": "formdata", "formdata": [{"key": "file", "type": "file", "src": "postman/files/not-an-image.txt"}]},
+            "description": "A file that can't be read is refused straight away, not after queueing."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 415\", () => pm.response.to.have.status(415));",
+                  "pm.test(\"Code is unsupported_file\", () => pm.expect(pm.response.json().error.code).to.eql(\"unsupported_file\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Empty file → 400",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/v1/check",
+            "body": {"mode": "formdata", "formdata": [{"key": "file", "type": "file", "src": "postman/files/empty.jpg"}]}
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"Code is empty_file\", () => pm.expect(pm.response.json().error.code).to.eql(\"empty_file\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "File in the wrong field → 400",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/v1/check",
+            "body": {"mode": "formdata", "formdata": [{"key": "document", "type": "file", "src": "postman/files/blurry-page.jpg"}]},
+            "description": "The file must be in a field named `file`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"Code is missing_file\", () => pm.expect(pm.response.json().error.code).to.eql(\"missing_file\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "JSON body instead of a file → 400",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "url": "{{baseUrl}}/v1/check",
+            "body": {"mode": "raw", "raw": "{\"file\": \"page.jpg\"}"}
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"Code is missing_file\", () => pm.expect(pm.response.json().error.code).to.eql(\"missing_file\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

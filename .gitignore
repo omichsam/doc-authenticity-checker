@@ -7,3 +7,10 @@ reports/
 .streamlit/secrets.toml
 .env
 .DS_Store
+
+# Postman sample pages made from the ClinOCR-Bench dataset; not redistributed (see postman/files/README.md)
+postman/files/genuine-page.jpg
+postman/files/blurry-page.jpg
+postman/files/edited-page.jpg
+postman/files/background-page.jpg
+postman/files/two-page-document.pdf

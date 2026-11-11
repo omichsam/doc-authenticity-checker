@@ -31,6 +31,18 @@ docker build -t pwd-document-checker .
 docker run --rm -p 8501:8501 pwd-document-checker
 ```
 
+## Also run the API
+
+To start the HTTP API for other systems (port 8100) alongside the app, set a
+key and use the `api` profile:
+
+```bash
+export DOC_CHECKER_API_KEY="choose-a-long-random-key"
+docker compose --profile api up -d --build
+```
+
+See [API.md](API.md) for details and the Django integration.
+
 ## Deploy on your own Linux server
 
 The server needs Git, Docker Engine, and the Docker Compose plugin. For a new
